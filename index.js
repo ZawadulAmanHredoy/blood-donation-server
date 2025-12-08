@@ -21,30 +21,30 @@ app.use(
     credentials: true,
   })
 );
+
 app.use(express.json());
 
 // MongoDB connection
 mongoose
-  .connect(process.env.MONGO_URI, {
-    // options can be added if needed
-  })
-  .then(() => {
-    console.log("✅ MongoDB connected");
-  })
-  .catch((err) => {
-    console.error("❌ MongoDB connection error:", err);
-  });
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch((err) => console.error("Mongo error:", err));
 
 // Health check
 app.get("/", (req, res) => {
   res.send("Blood Donation API is running");
 });
 
-// Routes
+// API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/requests", requestRoutes);
 app.use("/api/funding", fundingRoutes);
+
+// 404 for unknown /api/* routes
+app.use("/api", (req, res) => {
+  res.status(404).json({ message: "API route not found" });
+});
 
 // Global error handler
 app.use((err, req, res, next) => {
