@@ -4,6 +4,9 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
+import statsRoutes from "./routes/stats.routes.js";
+app.use("/api/stats", statsRoutes);
+
 
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./user.routes.js";
