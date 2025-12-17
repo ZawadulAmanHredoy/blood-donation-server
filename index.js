@@ -1,42 +1,43 @@
-// server/index.js
-import "dotenv/config";
-
 import express from "express";
 import cors from "cors";
+import dotenv from "dotenv";
 import mongoose from "mongoose";
-import statsRoutes from "./routes/stats.routes.js";
-app.use("/api/stats", statsRoutes);
 
+import authRoutes from "./routes/auth.routes.js";     // ✅ exists in /routes
+import userRoutes from "./user.routes.js";            // ✅ exists in root
+import requestRoutes from "./request.routes.js";      // ✅ exists in root
+import fundingRoutes from "./funding.routes.js";      // ✅ exists in root
+import statsRoutes from "./routes/stats.routes.js";   // ✅ we created in /routes
 
-import authRoutes from "./routes/auth.routes.js";
-import userRoutes from "./user.routes.js";
-import requestRoutes from "./request.routes.js";
-import fundingRoutes from "./funding.routes.js";
-import statsRoutes from "./stats.routes.js"; // ✅ NEW
+dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 5000;
 
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
-    credentials: true,
-  })
-);
-
+app.use(cors());
 app.use(express.json());
 
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
-
+// API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/requests", requestRoutes);
 app.use("/api/funding", fundingRoutes);
-app.use("/api/stats", statsRoutes); // ✅ NEW
+app.use("/api/stats", statsRoutes);
 
-app.get("/", (req, res) => res.send("API running ✅"));
+// root test
+app.get("/", (req, res) => {
+  res.send("Blood Donation Server is running");
+});
 
-app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
+const PORT = process.env.PORT || 5000;
+
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log("✅ MongoDB connected");
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("❌ MongoDB connection failed:", err);
+  });
