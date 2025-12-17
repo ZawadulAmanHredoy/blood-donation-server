@@ -8,7 +8,7 @@ import mongoose from "mongoose";
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./user.routes.js";
 import requestRoutes from "./request.routes.js";
-import fundingRoutes from "./funding.routes.js";
+import fundingRoutes from "./funding.routes.js"; // ✅ correct path
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -22,27 +22,18 @@ app.use(
 
 app.use(express.json());
 
-// DB
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("✅ MongoDB connected"))
   .catch((err) => console.error("❌ MongoDB connection error:", err));
 
-// Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/requests", requestRoutes);
-app.use("/api/funding", fundingRoutes);
+app.use("/api/funding", fundingRoutes); // ✅ correct mount
 
-app.get("/", (req, res) => res.send("API running ✅"));
+app.get("/", (req, res) => res.send("Blood Donation API is running ✅"));
 
-app.use((req, res) => {
-  res.status(404).json({ message: "Route not found" });
+app.listen(port, () => {
+  console.log(`🚀 Server running on port ${port}`);
 });
-
-app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  res.status(500).json({ message: "Server error" });
-});
-
-app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
