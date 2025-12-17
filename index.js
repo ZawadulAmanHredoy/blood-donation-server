@@ -8,7 +8,8 @@ import mongoose from "mongoose";
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./user.routes.js";
 import requestRoutes from "./request.routes.js";
-import fundingRoutes from "./funding.routes.js"; // ✅ correct path
+import fundingRoutes from "./funding.routes.js";
+import statsRoutes from "./stats.routes.js"; // ✅ NEW
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -30,10 +31,9 @@ mongoose
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/requests", requestRoutes);
-app.use("/api/funding", fundingRoutes); // ✅ correct mount
+app.use("/api/funding", fundingRoutes);
+app.use("/api/stats", statsRoutes); // ✅ NEW
 
-app.get("/", (req, res) => res.send("Blood Donation API is running ✅"));
+app.get("/", (req, res) => res.send("API running ✅"));
 
-app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
-});
+app.listen(port, () => console.log(`🚀 Server running on port ${port}`));
