@@ -5,7 +5,7 @@ import User from "./models/User.js";
 
 const router = express.Router();
 
-// Small helper for pagination (used for admin list)
+// Small helper for pagination (used for admin list + donor search)
 function parsePagination(query) {
   const page = Math.max(1, parseInt(query.page) || 1);
   const limit = Math.max(1, parseInt(query.limit) || 10);
@@ -13,12 +13,9 @@ function parsePagination(query) {
   return { page, limit, skip };
 }
 
-/* ────────────────────────────────────────────
-   AUTHENTICATED USER PROFILE
-   /api/users/me
-   ──────────────────────────────────────────── */
-
-// GET /api/users/me  → current logged-in user
+/* ─────────────────────────────────────────────
+   GET /api/users/me  → get own profile
+───────────────────────────────────────────── */
 router.get("/me", verifyJWT, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-passwordHash");
@@ -32,39 +29,39 @@ router.get("/me", verifyJWT, async (req, res) => {
   }
 });
 
-// PATCH /api/users/me  → update own profile
+/* ─────────────────────────────────────────────
+   PATCH /api/users/me  → update own profile
+───────────────────────────────────────────── */
 router.patch("/me", verifyJWT, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
+    const allowed = [
+      "name",
+      "avatar",
+      "bloodGroup",
+      "district",
+      "upazila",
+      "phone",
+    ];
+
+    const update = {};
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) update[key] = req.body[key];
     }
 
-    const { name, bloodGroup, district, upazila, avatar } = req.body;
+    const user = await User.findByIdAndUpdate(req.user.id, update, {
+      new: true,
+    }).select("-passwordHash");
 
-    if (typeof name === "string") user.name = name;
-    if (typeof bloodGroup === "string") user.bloodGroup = bloodGroup;
-    if (typeof district === "string") user.district = district;
-    if (typeof upazila === "string") user.upazila = upazila;
-    if (typeof avatar === "string") user.avatar = avatar;
-
-    await user.save();
-    const safeUser = user.toObject();
-    delete safeUser.passwordHash;
-
-    res.json(safeUser);
+    res.json(user);
   } catch (err) {
     console.error("PATCH /api/users/me error:", err);
     res.status(500).json({ message: "Failed to update profile." });
   }
 });
 
-/* ────────────────────────────────────────────
-   ADMIN – USER MANAGEMENT
-   /api/users
-   ──────────────────────────────────────────── */
-
-// GET /api/users  → list users (admin only, with optional filters)
+/* ─────────────────────────────────────────────
+   GET /api/users  → list all users (admin, paginated)
+───────────────────────────────────────────── */
 router.get("/", verifyJWT, async (req, res) => {
   try {
     if (req.user.role !== "admin") {
@@ -101,7 +98,9 @@ router.get("/", verifyJWT, async (req, res) => {
   }
 });
 
-// PATCH /api/users/:id/block  → block user (admin)
+/* ─────────────────────────────────────────────
+   PATCH /api/users/:id/block  → block user (admin)
+───────────────────────────────────────────── */
 router.patch("/:id/block", verifyJWT, async (req, res) => {
   try {
     if (req.user.role !== "admin") {
@@ -114,9 +113,7 @@ router.patch("/:id/block", verifyJWT, async (req, res) => {
       { new: true }
     ).select("-passwordHash");
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
+    if (!user) return res.status(404).json({ message: "User not found." });
 
     res.json(user);
   } catch (err) {
@@ -125,7 +122,9 @@ router.patch("/:id/block", verifyJWT, async (req, res) => {
   }
 });
 
-// PATCH /api/users/:id/unblock  → unblock user (admin)
+/* ─────────────────────────────────────────────
+   PATCH /api/users/:id/unblock  → unblock user (admin)
+───────────────────────────────────────────── */
 router.patch("/:id/unblock", verifyJWT, async (req, res) => {
   try {
     if (req.user.role !== "admin") {
@@ -138,9 +137,7 @@ router.patch("/:id/unblock", verifyJWT, async (req, res) => {
       { new: true }
     ).select("-passwordHash");
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
+    if (!user) return res.status(404).json({ message: "User not found." });
 
     res.json(user);
   } catch (err) {
@@ -149,7 +146,9 @@ router.patch("/:id/unblock", verifyJWT, async (req, res) => {
   }
 });
 
-// PATCH /api/users/:id/make-admin  → promote to admin
+/* ─────────────────────────────────────────────
+   PATCH /api/users/:id/make-admin  → promote to admin
+───────────────────────────────────────────── */
 router.patch("/:id/make-admin", verifyJWT, async (req, res) => {
   try {
     if (req.user.role !== "admin") {
@@ -162,9 +161,7 @@ router.patch("/:id/make-admin", verifyJWT, async (req, res) => {
       { new: true }
     ).select("-passwordHash");
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
+    if (!user) return res.status(404).json({ message: "User not found." });
 
     res.json(user);
   } catch (err) {
@@ -173,7 +170,9 @@ router.patch("/:id/make-admin", verifyJWT, async (req, res) => {
   }
 });
 
-// PATCH /api/users/:id/make-volunteer  → promote to volunteer
+/* ─────────────────────────────────────────────
+   PATCH /api/users/:id/make-volunteer  → promote to volunteer
+───────────────────────────────────────────── */
 router.patch("/:id/make-volunteer", verifyJWT, async (req, res) => {
   try {
     if (req.user.role !== "admin") {
@@ -186,9 +185,7 @@ router.patch("/:id/make-volunteer", verifyJWT, async (req, res) => {
       { new: true }
     ).select("-passwordHash");
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found." });
-    }
+    if (!user) return res.status(404).json({ message: "User not found." });
 
     res.json(user);
   } catch (err) {
@@ -197,30 +194,37 @@ router.patch("/:id/make-volunteer", verifyJWT, async (req, res) => {
   }
 });
 
-/* ────────────────────────────────────────────
-   PUBLIC – DONOR SEARCH
-   /api/users/search-donors
-   ──────────────────────────────────────────── */
-
-// GET /api/users/search-donors?bloodGroup=&district=&upazila=
+/* ─────────────────────────────────────────────
+   GET /api/users/search-donors  → public donor search (NOW PAGINATED ✅)
+   Query: bloodGroup, district, upazila, page, limit
+───────────────────────────────────────────── */
 router.get("/search-donors", async (req, res) => {
   try {
+    const { page, limit, skip } = parsePagination(req.query);
+
     const { bloodGroup, district, upazila } = req.query;
 
     const filter = {
+      role: "donor",
       status: "active",
-      role: { $in: ["donor", "volunteer", "admin"] }, // admins can also donate if you want
     };
 
     if (bloodGroup) filter.bloodGroup = bloodGroup;
     if (district) filter.district = district;
     if (upazila) filter.upazila = upazila;
 
-    const users = await User.find(filter)
-      .select("name email bloodGroup district upazila avatar role")
-      .sort({ createdAt: -1 });
+    const [items, total] = await Promise.all([
+      User.find(filter)
+        .select("name email bloodGroup district upazila avatar role")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      User.countDocuments(filter),
+    ]);
 
-    res.json(users);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    res.json({ items, page, limit, total, totalPages });
   } catch (err) {
     console.error("GET /users/search-donors error:", err);
     res.status(500).json({ message: "Failed to search donors." });
