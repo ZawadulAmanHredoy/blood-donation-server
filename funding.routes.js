@@ -3,76 +3,100 @@ import express from "express";
 import Stripe from "stripe";
 import verifyJWT from "./middleware/verifyJWT.js";
 import Funding from "./models/Funding.js";
-import User from "./models/User.js";
 
 const router = express.Router();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// ─────────────────────────────────────────────
-// GET /api/funding
-// PUBLIC: list all funding records
-// (used by FundingPage to show total funds)
-// ─────────────────────────────────────────────
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+
+if (!STRIPE_SECRET_KEY || !STRIPE_SECRET_KEY.startsWith("sk_")) {
+  console.warn("⚠️ STRIPE_SECRET_KEY missing/invalid in server/.env (must start with sk_)");
+}
+
+const stripe = new Stripe(STRIPE_SECRET_KEY);
+
+// list all
 router.get("/", async (req, res) => {
   try {
-    const funds = await Funding.find()
-      .populate("user", "name email")
-      .sort({ createdAt: -1 });
-
+    const funds = await Funding.find().populate("user", "name email").sort({ createdAt: -1 });
     res.json(funds);
   } catch (err) {
     console.error("GET /api/funding error:", err);
-    res.status(500).json({ message: "Failed to load funding data." });
+    res.status(500).json({ message: "Failed to load funds." });
   }
 });
 
-// ─────────────────────────────────────────────
-// POST /api/funding/create-payment-intent
-// PROTECTED: user must be logged in
-// ─────────────────────────────────────────────
-router.post("/create-payment-intent", verifyJWT, async (req, res) => {
+// create checkout session
+router.post("/create-checkout-session", verifyJWT, async (req, res) => {
   try {
-    const { amount } = req.body;
+    const numericAmount = Number(req.body.amount);
 
-    if (!amount || amount <= 0) {
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
       return res.status(400).json({ message: "Invalid amount." });
     }
 
-    // Stripe expects smallest unit (cents)
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amount * 100,
-      currency: "usd", // Stripe test mode; BDT isn't supported directly
+    const unitAmount = Math.round(numericAmount * 100);
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "bdt",
+            product_data: { name: "Donation Funding" },
+            unit_amount: unitAmount,
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${CLIENT_URL}/dashboard/funding?success=1&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${CLIENT_URL}/dashboard/funding?canceled=1`,
       metadata: {
         userId: req.user.id,
         email: req.user.email,
+        amount: String(numericAmount),
       },
     });
 
-    res.json({ clientSecret: paymentIntent.client_secret });
+    res.json({ url: session.url });
   } catch (err) {
-    console.error("POST /create-payment-intent error:", err);
-    res.status(500).json({ message: "Failed to create payment intent." });
+    console.error("POST /create-checkout-session error:", err);
+    res.status(500).json({
+      message: "Failed to create checkout session.",
+      error: process.env.NODE_ENV !== "production" ? err.message : undefined,
+    });
   }
 });
 
-// ─────────────────────────────────────────────
-// POST /api/funding/confirm
-// PROTECTED: save funding record after payment
-// ─────────────────────────────────────────────
-router.post("/confirm", verifyJWT, async (req, res) => {
+// verify + save (idempotent)
+router.post("/verify-checkout-session", verifyJWT, async (req, res) => {
   try {
-    const { paymentIntentId, amount } = req.body;
+    const { sessionId } = req.body;
+    if (!sessionId) return res.status(400).json({ message: "sessionId required." });
 
-    if (!paymentIntentId || !amount) {
-      return res.status(400).json({ message: "Missing data." });
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["payment_intent"],
+    });
+
+    if (session.payment_status !== "paid") {
+      return res.status(400).json({ message: "Payment not completed." });
     }
 
-    const user = await User.findById(req.user.id);
+    const paymentIntentId =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id;
+
+    if (!paymentIntentId) return res.status(400).json({ message: "Missing payment intent id." });
+
+    const existing = await Funding.findOne({ paymentIntentId });
+    if (existing) return res.json(existing);
+
+    const amount = Number(session.metadata?.amount || 0);
 
     const fund = await Funding.create({
-      user: user._id,
-      name: user.name,
-      email: user.email,
+      user: req.user.id,
       amount,
       currency: "bdt",
       paymentIntentId,
@@ -81,8 +105,11 @@ router.post("/confirm", verifyJWT, async (req, res) => {
 
     res.json(fund);
   } catch (err) {
-    console.error("POST /confirm error:", err);
-    res.status(500).json({ message: "Failed to save funding record." });
+    console.error("POST /verify-checkout-session error:", err);
+    res.status(500).json({
+      message: "Failed to verify payment.",
+      error: process.env.NODE_ENV !== "production" ? err.message : undefined,
+    });
   }
 });
 
