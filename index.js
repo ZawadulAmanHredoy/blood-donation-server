@@ -25,21 +25,11 @@ const allowedOrigins = [
   "https://blood-donation-app11189.firebaseapp.com",
 ];
 
-// If you set CLIENT_URL in env, allow it too
-if (process.env.CLIENT_URL) {
-  allowedOrigins.push(process.env.CLIENT_URL);
-}
-
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (Postman, server-to-server)
+    origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
+      if (allowedOrigins.includes(origin)) return callback(null, true);
       return callback(new Error("Not allowed by CORS: " + origin));
     },
     credentials: true,
@@ -48,7 +38,6 @@ app.use(
   })
 );
 
-// ✅ Ensure preflight works for all routes
 app.options("*", cors());
 
 app.use(express.json());
