@@ -9,8 +9,8 @@ const router = express.Router();
 
 // Helpers for pagination
 function parsePagination(query) {
-  const page = Math.max(1, parseInt(query.page, 10) || 1);
-  const limit = Math.max(1, parseInt(query.limit, 10) || 10);
+  const page = Math.max(1, parseInt(query.page) || 1);
+  const limit = Math.max(1, parseInt(query.limit) || 10);
   const skip = (page - 1) * limit;
   return { page, limit, skip };
 }
@@ -47,7 +47,9 @@ router.post("/", verifyJWT, async (req, res) => {
     }
 
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(401).json({ message: "User not found." });
+    if (!user) {
+      return res.status(401).json({ message: "User not found." });
+    }
 
     if (user.status === "blocked") {
       return res
@@ -95,7 +97,9 @@ router.get("/my", verifyJWT, async (req, res) => {
     const { page, limit, skip } = parsePagination(req.query);
     const filter = { "requester.user": req.user.id };
 
-    if (req.query.status) filter.status = req.query.status;
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
 
     const [items, total] = await Promise.all([
       DonationRequest.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -103,6 +107,7 @@ router.get("/my", verifyJWT, async (req, res) => {
     ]);
 
     const totalPages = Math.max(1, Math.ceil(total / limit));
+
     return res.json({ items, page, limit, total, totalPages });
   } catch (err) {
     console.error("Get my requests error:", err);
@@ -119,7 +124,9 @@ router.get("/volunteer/my", verifyJWT, async (req, res) => {
     const { page, limit, skip } = parsePagination(req.query);
     const filter = { "donor.user": req.user.id };
 
-    if (req.query.status) filter.status = req.query.status;
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
 
     const [items, total] = await Promise.all([
       DonationRequest.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -127,6 +134,7 @@ router.get("/volunteer/my", verifyJWT, async (req, res) => {
     ]);
 
     const totalPages = Math.max(1, Math.ceil(total / limit));
+
     return res.json({ items, page, limit, total, totalPages });
   } catch (err) {
     console.error("Get volunteer requests error:", err);
@@ -149,7 +157,9 @@ router.get("/all", verifyJWT, async (req, res) => {
     const { page, limit, skip } = parsePagination(req.query);
     const filter = {};
 
-    if (req.query.status) filter.status = req.query.status;
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
 
     const [items, total] = await Promise.all([
       DonationRequest.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -157,6 +167,7 @@ router.get("/all", verifyJWT, async (req, res) => {
     ]);
 
     const totalPages = Math.max(1, Math.ceil(total / limit));
+
     return res.json({ items, page, limit, total, totalPages });
   } catch (err) {
     console.error("Admin get all requests error:", err);
@@ -166,49 +177,24 @@ router.get("/all", verifyJWT, async (req, res) => {
 
 // ─────────────────────────────────────────────
 // GET /api/requests/pending-public
-// Public: pending & public requests (NOW: supports search/filter/sort)
+// Public: pending & public requests
+// Sort by donation schedule (earliest first)
 // ─────────────────────────────────────────────
 router.get("/pending-public", async (req, res) => {
   try {
     const { page, limit, skip } = parsePagination(req.query);
-
-    const {
-      bloodGroup,
-      district,
-      upazila,
-      q,
-      sort = "newest", // newest | oldest | date_asc | date_desc
-    } = req.query;
-
-    const filter = {
-      status: "pending",
-      isPublic: true,
-    };
-
-    if (bloodGroup) filter.bloodGroup = bloodGroup;
-    if (district) filter["recipient.district"] = district;
-    if (upazila) filter["recipient.upazila"] = upazila;
-
-    if (q && String(q).trim()) {
-      const text = String(q).trim();
-      filter.$or = [
-        { "recipient.name": { $regex: text, $options: "i" } },
-        { hospitalName: { $regex: text, $options: "i" } },
-        { fullAddress: { $regex: text, $options: "i" } },
-      ];
-    }
-
-    let sortObj = { createdAt: -1 };
-    if (sort === "oldest") sortObj = { createdAt: 1 };
-    if (sort === "date_asc") sortObj = { donationDate: 1, donationTime: 1 };
-    if (sort === "date_desc") sortObj = { donationDate: -1, donationTime: -1 };
+    const filter = { status: "pending", isPublic: true };
 
     const [items, total] = await Promise.all([
-      DonationRequest.find(filter).sort(sortObj).skip(skip).limit(limit),
+      DonationRequest.find(filter)
+        .sort({ donationDate: 1, donationTime: 1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
       DonationRequest.countDocuments(filter),
     ]);
 
     const totalPages = Math.max(1, Math.ceil(total / limit));
+
     return res.json({ items, page, limit, total, totalPages });
   } catch (err) {
     console.error("Public pending requests error:", err);
@@ -218,7 +204,7 @@ router.get("/pending-public", async (req, res) => {
 
 // ─────────────────────────────────────────────
 // GET /api/requests/:id
-// Get single request details (protected)
+// Get single request details
 // ─────────────────────────────────────────────
 router.get("/:id", verifyJWT, async (req, res) => {
   try {
@@ -226,7 +212,10 @@ router.get("/:id", verifyJWT, async (req, res) => {
       .populate("requester.user", "name email avatar")
       .populate("donor.user", "name email avatar");
 
-    if (!request) return res.status(404).json({ message: "Request not found." });
+    if (!request) {
+      return res.status(404).json({ message: "Request not found." });
+    }
+
     return res.json(request);
   } catch (err) {
     console.error("Get request by id error:", err);
@@ -241,7 +230,9 @@ router.get("/:id", verifyJWT, async (req, res) => {
 router.put("/:id", verifyJWT, async (req, res) => {
   try {
     const request = await DonationRequest.findById(req.params.id);
-    if (!request) return res.status(404).json({ message: "Request not found." });
+    if (!request) {
+      return res.status(404).json({ message: "Request not found." });
+    }
 
     const isOwner = String(request.requester.user) === req.user.id;
     const isAdmin = req.user.role === "admin";
@@ -284,18 +275,23 @@ router.put("/:id", verifyJWT, async (req, res) => {
 // ─────────────────────────────────────────────
 // PATCH /api/requests/:id/donate
 // Logged-in user accepts the request as donor
+// (also auto-hide from public)
 // ─────────────────────────────────────────────
 router.patch("/:id/donate", verifyJWT, async (req, res) => {
   try {
     const request = await DonationRequest.findById(req.params.id);
-    if (!request) return res.status(404).json({ message: "Request not found." });
+    if (!request) {
+      return res.status(404).json({ message: "Request not found." });
+    }
 
     if (request.status !== "pending") {
       return res.status(400).json({ message: "Request is not pending." });
     }
 
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(401).json({ message: "User not found." });
+    if (!user) {
+      return res.status(401).json({ message: "User not found." });
+    }
 
     if (user.status === "blocked") {
       return res.status(403).json({ message: "Blocked users cannot donate." });
@@ -311,8 +307,9 @@ router.patch("/:id/donate", verifyJWT, async (req, res) => {
     };
 
     request.status = "inprogress";
-    await request.save();
+    request.isPublic = false;
 
+    await request.save();
     return res.json(request);
   } catch (err) {
     console.error("Donate to request error:", err);
@@ -323,6 +320,7 @@ router.patch("/:id/donate", verifyJWT, async (req, res) => {
 // ─────────────────────────────────────────────
 // PATCH /api/requests/:id/status
 // Change status (admin OR requester OR donor)
+// (auto-hide from public when not pending)
 // ─────────────────────────────────────────────
 router.patch("/:id/status", verifyJWT, async (req, res) => {
   try {
@@ -334,7 +332,9 @@ router.patch("/:id/status", verifyJWT, async (req, res) => {
     }
 
     const request = await DonationRequest.findById(req.params.id);
-    if (!request) return res.status(404).json({ message: "Request not found." });
+    if (!request) {
+      return res.status(404).json({ message: "Request not found." });
+    }
 
     const isAdmin = req.user.role === "admin";
     const isOwner = String(request.requester.user) === req.user.id;
@@ -347,8 +347,12 @@ router.patch("/:id/status", verifyJWT, async (req, res) => {
     }
 
     request.status = status;
-    await request.save();
 
+    if (status !== "pending") {
+      request.isPublic = false;
+    }
+
+    await request.save();
     return res.json(request);
   } catch (err) {
     console.error("Change status error:", err);
@@ -363,7 +367,9 @@ router.patch("/:id/status", verifyJWT, async (req, res) => {
 router.delete("/:id", verifyJWT, async (req, res) => {
   try {
     const request = await DonationRequest.findById(req.params.id);
-    if (!request) return res.status(404).json({ message: "Request not found." });
+    if (!request) {
+      return res.status(404).json({ message: "Request not found." });
+    }
 
     const isOwner = String(request.requester.user) === req.user.id;
     const isAdmin = req.user.role === "admin";
