@@ -1,4 +1,5 @@
 // server/request.routes.js
+
 import express from "express";
 import verifyJWT from "./middleware/verifyJWT.js";
 import DonationRequest from "./models/DonationRequest.js";
@@ -8,8 +9,8 @@ const router = express.Router();
 
 // Helpers for pagination
 function parsePagination(query) {
-  const page = Math.max(1, parseInt(query.page) || 1);
-  const limit = Math.max(1, parseInt(query.limit) || 10);
+  const page = Math.max(1, parseInt(query.page, 10) || 1);
+  const limit = Math.max(1, parseInt(query.limit, 10) || 10);
   const skip = (page - 1) * limit;
   return { page, limit, skip };
 }
@@ -46,9 +47,7 @@ router.post("/", verifyJWT, async (req, res) => {
     }
 
     const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(401).json({ message: "User not found." });
-    }
+    if (!user) return res.status(401).json({ message: "User not found." });
 
     if (user.status === "blocked") {
       return res
@@ -80,10 +79,10 @@ router.post("/", verifyJWT, async (req, res) => {
       },
     });
 
-    res.status(201).json(doc);
+    return res.status(201).json(doc);
   } catch (err) {
     console.error("Create request error:", err);
-    res.status(500).json({ message: "Failed to create request." });
+    return res.status(500).json({ message: "Failed to create request." });
   }
 });
 
@@ -94,33 +93,20 @@ router.post("/", verifyJWT, async (req, res) => {
 router.get("/my", verifyJWT, async (req, res) => {
   try {
     const { page, limit, skip } = parsePagination(req.query);
-    const filter = {
-      "requester.user": req.user.id,
-    };
-    if (req.query.status) {
-      filter.status = req.query.status;
-    }
+    const filter = { "requester.user": req.user.id };
+
+    if (req.query.status) filter.status = req.query.status;
 
     const [items, total] = await Promise.all([
-      DonationRequest.find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
+      DonationRequest.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
       DonationRequest.countDocuments(filter),
     ]);
 
     const totalPages = Math.max(1, Math.ceil(total / limit));
-
-    res.json({
-      items,
-      page,
-      limit,
-      total,
-      totalPages,
-    });
+    return res.json({ items, page, limit, total, totalPages });
   } catch (err) {
     console.error("Get my requests error:", err);
-    res.status(500).json({ message: "Failed to load requests." });
+    return res.status(500).json({ message: "Failed to load requests." });
   }
 });
 
@@ -131,33 +117,20 @@ router.get("/my", verifyJWT, async (req, res) => {
 router.get("/volunteer/my", verifyJWT, async (req, res) => {
   try {
     const { page, limit, skip } = parsePagination(req.query);
-    const filter = {
-      "donor.user": req.user.id,
-    };
-    if (req.query.status) {
-      filter.status = req.query.status;
-    }
+    const filter = { "donor.user": req.user.id };
+
+    if (req.query.status) filter.status = req.query.status;
 
     const [items, total] = await Promise.all([
-      DonationRequest.find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
+      DonationRequest.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
       DonationRequest.countDocuments(filter),
     ]);
 
     const totalPages = Math.max(1, Math.ceil(total / limit));
-
-    res.json({
-      items,
-      page,
-      limit,
-      total,
-      totalPages,
-    });
+    return res.json({ items, page, limit, total, totalPages });
   } catch (err) {
     console.error("Get volunteer requests error:", err);
-    res
+    return res
       .status(500)
       .json({ message: "Failed to load volunteer requests." });
   }
@@ -175,71 +148,77 @@ router.get("/all", verifyJWT, async (req, res) => {
 
     const { page, limit, skip } = parsePagination(req.query);
     const filter = {};
-    if (req.query.status) {
-      filter.status = req.query.status;
-    }
+
+    if (req.query.status) filter.status = req.query.status;
 
     const [items, total] = await Promise.all([
-      DonationRequest.find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
+      DonationRequest.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
       DonationRequest.countDocuments(filter),
     ]);
 
     const totalPages = Math.max(1, Math.ceil(total / limit));
-
-    res.json({
-      items,
-      page,
-      limit,
-      total,
-      totalPages,
-    });
+    return res.json({ items, page, limit, total, totalPages });
   } catch (err) {
     console.error("Admin get all requests error:", err);
-    res.status(500).json({ message: "Failed to load requests." });
+    return res.status(500).json({ message: "Failed to load requests." });
   }
 });
 
 // ─────────────────────────────────────────────
 // GET /api/requests/pending-public
-// Public: pending & public requests
+// Public: pending & public requests (NOW: supports search/filter/sort)
 // ─────────────────────────────────────────────
 router.get("/pending-public", async (req, res) => {
   try {
     const { page, limit, skip } = parsePagination(req.query);
+
+    const {
+      bloodGroup,
+      district,
+      upazila,
+      q,
+      sort = "newest", // newest | oldest | date_asc | date_desc
+    } = req.query;
+
     const filter = {
       status: "pending",
       isPublic: true,
     };
 
+    if (bloodGroup) filter.bloodGroup = bloodGroup;
+    if (district) filter["recipient.district"] = district;
+    if (upazila) filter["recipient.upazila"] = upazila;
+
+    if (q && String(q).trim()) {
+      const text = String(q).trim();
+      filter.$or = [
+        { "recipient.name": { $regex: text, $options: "i" } },
+        { hospitalName: { $regex: text, $options: "i" } },
+        { fullAddress: { $regex: text, $options: "i" } },
+      ];
+    }
+
+    let sortObj = { createdAt: -1 };
+    if (sort === "oldest") sortObj = { createdAt: 1 };
+    if (sort === "date_asc") sortObj = { donationDate: 1, donationTime: 1 };
+    if (sort === "date_desc") sortObj = { donationDate: -1, donationTime: -1 };
+
     const [items, total] = await Promise.all([
-      DonationRequest.find(filter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
+      DonationRequest.find(filter).sort(sortObj).skip(skip).limit(limit),
       DonationRequest.countDocuments(filter),
     ]);
 
     const totalPages = Math.max(1, Math.ceil(total / limit));
-
-    res.json({
-      items,
-      page,
-      limit,
-      total,
-      totalPages,
-    });
+    return res.json({ items, page, limit, total, totalPages });
   } catch (err) {
     console.error("Public pending requests error:", err);
-    res.status(500).json({ message: "Failed to load public requests." });
+    return res.status(500).json({ message: "Failed to load public requests." });
   }
 });
 
 // ─────────────────────────────────────────────
 // GET /api/requests/:id
-// Get single request details
+// Get single request details (protected)
 // ─────────────────────────────────────────────
 router.get("/:id", verifyJWT, async (req, res) => {
   try {
@@ -247,14 +226,11 @@ router.get("/:id", verifyJWT, async (req, res) => {
       .populate("requester.user", "name email avatar")
       .populate("donor.user", "name email avatar");
 
-    if (!request) {
-      return res.status(404).json({ message: "Request not found." });
-    }
-
-    res.json(request);
+    if (!request) return res.status(404).json({ message: "Request not found." });
+    return res.json(request);
   } catch (err) {
     console.error("Get request by id error:", err);
-    res.status(500).json({ message: "Failed to load request." });
+    return res.status(500).json({ message: "Failed to load request." });
   }
 });
 
@@ -265,17 +241,12 @@ router.get("/:id", verifyJWT, async (req, res) => {
 router.put("/:id", verifyJWT, async (req, res) => {
   try {
     const request = await DonationRequest.findById(req.params.id);
-    if (!request) {
-      return res.status(404).json({ message: "Request not found." });
-    }
+    if (!request) return res.status(404).json({ message: "Request not found." });
 
     const isOwner = String(request.requester.user) === req.user.id;
     const isAdmin = req.user.role === "admin";
-
     if (!isOwner && !isAdmin) {
-      return res
-        .status(403)
-        .json({ message: "Not allowed to edit this request." });
+      return res.status(403).json({ message: "Not allowed to edit this request." });
     }
 
     const {
@@ -299,15 +270,14 @@ router.put("/:id", verifyJWT, async (req, res) => {
     if (bloodGroup) request.bloodGroup = bloodGroup;
     if (donationDate) request.donationDate = donationDate;
     if (donationTime) request.donationTime = donationTime;
-    if (typeof requestMessage === "string")
-      request.requestMessage = requestMessage;
+    if (typeof requestMessage === "string") request.requestMessage = requestMessage;
     if (typeof isPublic === "boolean") request.isPublic = isPublic;
 
     await request.save();
-    res.json(request);
+    return res.json(request);
   } catch (err) {
     console.error("Update request error:", err);
-    res.status(500).json({ message: "Failed to update request." });
+    return res.status(500).json({ message: "Failed to update request." });
   }
 });
 
@@ -318,18 +288,14 @@ router.put("/:id", verifyJWT, async (req, res) => {
 router.patch("/:id/donate", verifyJWT, async (req, res) => {
   try {
     const request = await DonationRequest.findById(req.params.id);
-    if (!request) {
-      return res.status(404).json({ message: "Request not found." });
-    }
+    if (!request) return res.status(404).json({ message: "Request not found." });
 
     if (request.status !== "pending") {
       return res.status(400).json({ message: "Request is not pending." });
     }
 
     const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(401).json({ message: "User not found." });
-    }
+    if (!user) return res.status(401).json({ message: "User not found." });
 
     if (user.status === "blocked") {
       return res.status(403).json({ message: "Blocked users cannot donate." });
@@ -343,13 +309,14 @@ router.patch("/:id/donate", verifyJWT, async (req, res) => {
       upazila: user.upazila,
       bloodGroup: user.bloodGroup,
     };
-    request.status = "inprogress";
 
+    request.status = "inprogress";
     await request.save();
-    res.json(request);
+
+    return res.json(request);
   } catch (err) {
     console.error("Donate to request error:", err);
-    res.status(500).json({ message: "Failed to take request." });
+    return res.status(500).json({ message: "Failed to take request." });
   }
 });
 
@@ -361,32 +328,31 @@ router.patch("/:id/status", verifyJWT, async (req, res) => {
   try {
     const { status } = req.body;
     const allowed = ["pending", "inprogress", "done", "canceled"];
+
     if (!allowed.includes(status)) {
       return res.status(400).json({ message: "Invalid status." });
     }
 
     const request = await DonationRequest.findById(req.params.id);
-    if (!request) {
-      return res.status(404).json({ message: "Request not found." });
-    }
+    if (!request) return res.status(404).json({ message: "Request not found." });
 
     const isAdmin = req.user.role === "admin";
     const isOwner = String(request.requester.user) === req.user.id;
-    const isDonor =
-      request.donor?.user && String(request.donor.user) === req.user.id;
+    const isDonor = request.donor?.user && String(request.donor.user) === req.user.id;
 
     if (!isAdmin && !isOwner && !isDonor) {
-      return res.status(403).json({
-        message: "Not allowed to change status for this request.",
-      });
+      return res
+        .status(403)
+        .json({ message: "Not allowed to change status for this request." });
     }
 
     request.status = status;
     await request.save();
-    res.json(request);
+
+    return res.json(request);
   } catch (err) {
     console.error("Change status error:", err);
-    res.status(500).json({ message: "Failed to change status." });
+    return res.status(500).json({ message: "Failed to change status." });
   }
 });
 
@@ -397,24 +363,20 @@ router.patch("/:id/status", verifyJWT, async (req, res) => {
 router.delete("/:id", verifyJWT, async (req, res) => {
   try {
     const request = await DonationRequest.findById(req.params.id);
-    if (!request) {
-      return res.status(404).json({ message: "Request not found." });
-    }
+    if (!request) return res.status(404).json({ message: "Request not found." });
 
     const isOwner = String(request.requester.user) === req.user.id;
     const isAdmin = req.user.role === "admin";
 
     if (!isOwner && !isAdmin) {
-      return res
-        .status(403)
-        .json({ message: "Not allowed to delete this request." });
+      return res.status(403).json({ message: "Not allowed to delete this request." });
     }
 
     await request.deleteOne();
-    res.json({ message: "Request deleted." });
+    return res.json({ message: "Request deleted." });
   } catch (err) {
     console.error("Delete request error:", err);
-    res.status(500).json({ message: "Failed to delete request." });
+    return res.status(500).json({ message: "Failed to delete request." });
   }
 });
 
