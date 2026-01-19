@@ -1,4 +1,5 @@
 // server/routes/stats.routes.js
+
 import express from "express";
 import DonationRequest from "../models/DonationRequest.js";
 import Funding from "../models/Funding.js";
@@ -21,7 +22,9 @@ router.get(
     try {
       const [totalUsers, fundsAgg, reqAgg] = await Promise.all([
         User.countDocuments(),
-        Funding.aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }]),
+        Funding.aggregate([
+          { $group: { _id: null, total: { $sum: "$amount" } } },
+        ]),
         DonationRequest.aggregate([
           { $group: { _id: "$status", count: { $sum: 1 } } },
         ]),
@@ -36,11 +39,11 @@ router.get(
         canceled: 0,
       };
 
-      reqAgg.forEach((r) => {
+      for (const r of reqAgg) {
         if (requests[r._id] !== undefined) requests[r._id] = r.count;
-      });
+      }
 
-      res.json({
+      return res.json({
         totalUsers,
         totalFunds,
         requests: {
@@ -50,7 +53,9 @@ router.get(
       });
     } catch (err) {
       console.error("Stats summary error:", err);
-      res.status(500).json({ message: "Failed to load dashboard summary" });
+      return res
+        .status(500)
+        .json({ message: "Failed to load dashboard summary" });
     }
   }
 );
@@ -66,11 +71,13 @@ router.get(
   requireRole("admin", "volunteer"),
   async (req, res) => {
     try {
+      const now = Date.now();
+
       // Daily (last 30 days)
       const daily = await DonationRequest.aggregate([
         {
           $match: {
-            createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+            createdAt: { $gte: new Date(now - 30 * 24 * 60 * 60 * 1000) },
           },
         },
         {
@@ -103,7 +110,7 @@ router.get(
       const weekly = await DonationRequest.aggregate([
         {
           $match: {
-            createdAt: { $gte: new Date(Date.now() - 12 * 7 * 24 * 60 * 60 * 1000) },
+            createdAt: { $gte: new Date(now - 12 * 7 * 24 * 60 * 60 * 1000) },
           },
         },
         {
@@ -136,7 +143,7 @@ router.get(
       const monthly = await DonationRequest.aggregate([
         {
           $match: {
-            createdAt: { $gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) },
+            createdAt: { $gte: new Date(now - 365 * 24 * 60 * 60 * 1000) },
           },
         },
         {
@@ -164,10 +171,10 @@ router.get(
         },
       ]);
 
-      res.json({ daily, weekly, monthly });
+      return res.json({ daily, weekly, monthly });
     } catch (err) {
       console.error("Stats requests error:", err);
-      res.status(500).json({ message: "Failed to load statistics" });
+      return res.status(500).json({ message: "Failed to load statistics" });
     }
   }
 );

@@ -1,13 +1,16 @@
+// server/index.js
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 
-import authRoutes from "./routes/auth.routes.js";     // ✅ exists in /routes
-import userRoutes from "./user.routes.js";            // ✅ exists in root
-import requestRoutes from "./request.routes.js";      // ✅ exists in root
-import fundingRoutes from "./funding.routes.js";      // ✅ exists in root
-import statsRoutes from "./routes/stats.routes.js";   // ✅ we created in /routes
+import authRoutes from "./routes/auth.routes.js";
+import userRoutes from "./user.routes.js";
+import requestRoutes from "./request.routes.js";
+import fundingRoutes from "./funding.routes.js";
+import statsRoutes from "./routes/stats.routes.js";
+import publicRoutes from "./routes/public.routes.js";
 
 dotenv.config();
 
@@ -22,6 +25,9 @@ app.use("/api/users", userRoutes);
 app.use("/api/requests", requestRoutes);
 app.use("/api/funding", fundingRoutes);
 app.use("/api/stats", statsRoutes);
+
+// Public routes (no JWT)
+app.use("/api/public", publicRoutes);
 
 // root test
 app.get("/", (req, res) => {
